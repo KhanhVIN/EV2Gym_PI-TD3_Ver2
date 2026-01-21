@@ -49,7 +49,15 @@ def eval_policy(policy,
     avg_reward = 0.
     stats_list = []
     for replay in tqdm(eval_config['eval_replays']):
-        replay = f'{eval_config["eval_path"]}{replay}'
+        # Use os.path.join to properly concatenate paths
+        replay = os.path.join(eval_config["eval_path"], replay)
+        
+        # Check if replay file exists before loading
+        if not os.path.exists(replay):
+            print(f"[WARNING] Replay file not found: {replay}")
+            print(f"[WARNING] Absolute path attempted: {os.path.abspath(replay)}")
+            continue
+        
         eval_env = EV2Gym(config_file=config_file,
                           load_from_replay_path=replay,
                           state_function=eval_config['state_function'],
@@ -65,8 +73,12 @@ def eval_policy(policy,
         done = False
         while not done:
             action = policy.select_action(state, evaluate=True)
-            if len(action) == 3:
-                action = action[0]
+            # Handle tuple return from some policies (action, log_prob, mean)
+            if isinstance(action, tuple) or (hasattr(action, '__len__') and len(action) == 3 and not isinstance(action, np.ndarray)):
+                action = action[0]  # Extract action from tuple
+            # Ensure action is always array, not scalar
+            if np.isscalar(action) or (isinstance(action, np.ndarray) and action.ndim == 0):
+                action = np.array([action])
             state, reward, done, _, stats = eval_env.step(action)
             avg_reward += reward
 
@@ -274,18 +286,29 @@ if __name__ == "__main__":
             "Discrete action number not recognized. Only support 1 or 3 at the moment!")
 
     # =========================================================================
-    problem_name = config_file.split('/')[-1].split('.')[0]
-    eval_replay_path = f'./replay/{problem_name}_{args.eval_episodes}evals/'
+    # Generate or load replay files for evaluation
+    # =========================================================================
+    config_name = args.config.split('.yaml')[0]
+    # Remove trailing slash to avoid path duplication issues
+    number_of_charging_stations = config['number_of_charging_stations']
+    eval_replay_path = f'./replay/{number_of_charging_stations}cs_{config_name}_{args.eval_episodes}evals'
+    
     print(f'Looking for replay files in {eval_replay_path}')
+    
     try:
         eval_replay_files = [f for f in os.listdir(
             eval_replay_path) if os.path.isfile(os.path.join(eval_replay_path, f))]
+
         print(
             f'Found {len(eval_replay_files)} replay files in {eval_replay_path}')
+        if args.eval_episodes > len(eval_replay_files):
+            # args.eval_episodes = len(eval_replay_files)
+            replays_exist = False
+        else:
+            replays_exist = True
 
-        replays_exist = True
-
-    except:
+    except FileNotFoundError:
+        args.eval_episodes = args.eval_episodes
         replays_exist = False
 
     def generate_replay(evaluation_name):
@@ -295,7 +318,8 @@ if __name__ == "__main__":
                      replay_save_path=f"{evaluation_name}/",
                      )
 
-        replay_path = f"{evaluation_name}/replay_{env.sim_name}.pkl"
+        # Return only the filename, not the full path (eval_path will be joined later)
+        replay_filename = f"replay_{env.sim_name}.pkl"
 
         for _ in range(env.simulation_length):
             actions = np.ones(env.cs)
@@ -306,7 +330,7 @@ if __name__ == "__main__":
             if done:
                 break
 
-        return replay_path
+        return replay_filename
 
     if not replays_exist:
         eval_replay_files = [generate_replay(
@@ -562,7 +586,7 @@ if __name__ == "__main__":
     else:
         raise ValueError("Policy not recognized.")
 
-    best_reward = -np.Inf
+    best_reward = -np.inf
     start_timestep_training = 0
     episode_num = -1
 

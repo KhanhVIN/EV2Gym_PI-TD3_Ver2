@@ -5,8 +5,17 @@ import gymnasium as gym
 from ev2gym.visuals.evaluator_plot import plot_comparable_EV_SoC_single, plot_prices
 from ev2gym.visuals.evaluator_plot import plot_total_power_V2G, plot_actual_power_vs_setpoint
 from ev2gym.visuals.evaluator_plot import plot_total_power, plot_comparable_EV_SoC, plot_grid_metrics
-from ev2gym.baselines.gurobi_models.profit_max import V2GProfitMaxOracleGB
-from ev2gym.baselines.gurobi_models.tracking_error import PowerTrackingErrorrMin
+### TEMP DISABLE GUROBI - START ###
+try:
+    from ev2gym.baselines.gurobi_models.profit_max import V2GProfitMaxOracleGB
+    from ev2gym.baselines.gurobi_models.tracking_error import PowerTrackingErrorrMin
+    GUROBI_AVAILABLE = True
+except ImportError:
+    GUROBI_AVAILABLE = False
+    V2GProfitMaxOracleGB = None
+    PowerTrackingErrorrMin = None
+    print("[INFO] Gurobi not available. Gurobi baselines disabled in evaluator.")
+### TEMP DISABLE GUROBI - END ###
 
 from algorithms.SAC.sac import SAC
 from algorithms.SAC.pi_SAC import PI_SAC
@@ -29,10 +38,19 @@ from ev2gym.baselines.mpc.eMPC_v2 import eMPC_V2G_v2
 from ev2gym.baselines.mpc.eMPC import eMPC_V2G, eMPC_G2V
 from ev2gym.baselines.mpc.ocmf_mpc import OCMF_V2G, OCMF_G2V
 from ev2gym.baselines.heuristics import RandomAgent, DoNothing, ChargeAsFastAsPossible
-from ev2gym.baselines.gurobi_models.v2g_grid_old import V2GProfitMax_Grid_OracleGB
+### TEMP DISABLE GUROBI - START ###
+try:
+    from ev2gym.baselines.gurobi_models.v2g_grid_old import V2GProfitMax_Grid_OracleGB
+    GUROBI_AVAILABLE = GUROBI_AVAILABLE and True  # Keep previous status
+except ImportError:
+    GUROBI_AVAILABLE = False
+    V2GProfitMax_Grid_OracleGB = None
+### TEMP DISABLE GUROBI - END ###
 
 from agent.state import V2G_grid_state_ModelBasedRL
 from agent.reward import Grid_V2G_profitmaxV2
+from agent.transition_fn import V2G_Grid_StateTransition
+from agent.loss_fn import V2GridLoss
 
 from ev2gym.models.ev2gym_env import EV2Gym
 import yaml
@@ -47,6 +65,7 @@ import datetime
 import time
 import random
 import gzip
+from tqdm import tqdm  # Import tqdm for progress bars
 
 import warnings
 
@@ -145,44 +164,54 @@ def evaluator():
         # "./config_files/v2g_grid_150_300_l=085.yaml",
         # "./config_files/v2g_grid_150_300_l=095.yaml",
         # "./config_files/v2g_grid_150_300.yaml",
-        "./config_files/v2g_grid_500_bus_123.yaml",
+        "./config_files/v2g_grid_35.yaml",
+        #"./config_files/v2g_grid_500_bus_123.yaml",
         # "./config_files/v2g_grid_150_300_l=105.yaml",
         # "./config_files/v2g_grid_150_300_l=115.yaml",
         # "./config_files/v2g_grid_150_300_l=125.yaml",
         # "./config_files/v2g_grid_150_300_l=15.yaml",
     ]
+    # config_file_list = ["./config_files/v2g_grid_3.yaml"]  # Khớp với training
 
     state_function_Normal = V2G_grid_state_ModelBasedRL
     reward_function = Grid_V2G_profitmaxV2
 
     # Algorithms to compare:
     # Use algorithm name or the saved RL model path as string
-    algorithms = [
+    # algorithms = [
+        
+    #     ### TEMP DISABLE GUROBI - START ###
+    #     # Uncomment below when you have Gurobi license:
+    #     # V2GProfitMax_Grid_OracleGB,
+    #     ### TEMP DISABLE GUROBI - END ###
+        
+    #     # 150cs
+        
+    #     # "td3_run_30_K=1_scenario=grid_v2g_profitmax_26092-665267",
+    #     # "sac_run_20_K=1_scenario=grid_v2g_profitmax_69380-857910",
+    #     # "pi_td3_run_30_K=40_scenario=grid_v2g_profitmax_37423-665267",        
+    #     # "ppo_run_0_11257_Grid_V2G_profitmaxV2_V2G_grid_state_ModelBasedRL",
+    #     #### "pi_sac_run_20_K=20_scenario=grid_v2g_profitmax_99535-857910",
         
         
-        V2GProfitMax_Grid_OracleGB,
-        # 150cs
+    #     # 500cs
+    #     # "pi_td3_run_20_K=20_scenario=grid_v2g_profitmax_68441-857910",
+    #     # "sac_run_10_K=1_scenario=grid_v2g_profitmax_53449-699159",
+    #     # "td3_run_10_K=1_scenario=grid_v2g_profitmax_38227-699159",
+    #     # "ppo_run_0_42305_Grid_V2G_profitmaxV2_V2G_grid_state_ModelBasedRL",
         
-        # "td3_run_30_K=1_scenario=grid_v2g_profitmax_26092-665267",
-        # "sac_run_20_K=1_scenario=grid_v2g_profitmax_69380-857910",
-        # "pi_td3_run_30_K=40_scenario=grid_v2g_profitmax_37423-665267",        
-        # "ppo_run_0_11257_Grid_V2G_profitmaxV2_V2G_grid_state_ModelBasedRL",
-        #### "pi_sac_run_20_K=20_scenario=grid_v2g_profitmax_99535-857910",
+    #     # ChargeAsFastAsPossible,
+    #     # DoNothing,
         
-        
-        # 500cs
-        # "pi_td3_run_20_K=20_scenario=grid_v2g_profitmax_68441-857910",
-        # "sac_run_10_K=1_scenario=grid_v2g_profitmax_53449-699159",
-        # "td3_run_10_K=1_scenario=grid_v2g_profitmax_38227-699159",
-        # "ppo_run_0_42305_Grid_V2G_profitmaxV2_V2G_grid_state_ModelBasedRL",
-        
-        # ChargeAsFastAsPossible,
-        # DoNothing,
-        
-        # RandomAgent,
-        # V2GProfitMaxOracleGB,
+    #     # RandomAgent,
+    #     # V2GProfitMaxOracleGB,
 
         
+    # ]
+
+    algorithms = [
+    "base-985440",  # Model vừa train
+    ChargeAsFastAsPossible,  # Baseline để so sánh
     ]
     
     for config_file in config_file_list:
@@ -284,29 +313,72 @@ def evaluator():
 
         # save the list of EV profiles to a pickle file
         if SAVE_EV_PROFILES:
-            with open(save_path + 'ev_profiles.pkl', 'wb') as f:
-                print(f'Saving EV profiles to {save_path}ev_profiles.pkl')
+            with open(f'{save_path}/ev_profiles.pkl', 'wb') as f:
                 pickle.dump(ev_profiles, f)
 
-            exit()
+        ### DEFENSIVE CODING - Initialize variables to prevent UnboundLocalError ###
+        results = pd.DataFrame()  # Initialize empty results
+        model = None  # Initialize model
+        ### END DEFENSIVE CODING ###
 
+        print(f"\n\n+------- Algorithms to evaluate: {len(algorithms)} -------+")
         plot_results_dict = {}
         counter = 0
 
-        for i_a, algorithm in enumerate(algorithms):
-            print(' +------- Evaluating', algorithm, " -------+")
-            for k in range(n_test_cycles):
-                
-                try:
-                
-                    print(f' Test cycle {k+1}/{n_test_cycles} -- {algorithm}')
+        for algorithm in algorithms:
+            try:  ### WRAP IN TRY-EXCEPT FOR SAFETY ###
+                print(f" +------- Evaluating {algorithm}  -------+")
+                dfs = []
+
+                for test_cycle in tqdm(range(n_test_cycles)):
+                    print(
+                        f" Test cycle {test_cycle + 1}/{n_test_cycles} -- {algorithm}")
                     counter += 1
                     h = -1
 
                     if replays_exist:
-                        replay_path = eval_replay_path + eval_replay_files[k]
+                        replay_path = f'{eval_replay_path}{eval_replay_files[test_cycle]}'
                     else:
-                        replay_path = eval_replay_files[k]
+                        replay_path = eval_replay_files[test_cycle]
+
+                    ### REPRODUCTION VESTIGE - Generic model loader for non-standard names ###
+                    # Original code structure preserved - specific algorithm checks follow below
+                    # This section handles models with custom names (e.g., "base-985440")
+                    # that don't match the standard naming patterns
+                    
+                    if type(algorithm) == str:
+                        # Generic loader for custom-named models
+                        is_custom_model = not any(x in algorithm.lower() for x in 
+                                                 ['ppo', 'sac', 'td3', 'pi_', 'shac', 'gnn'])
+                        
+                        if is_custom_model and test_cycle == 0:
+                            ### REPRODUCTION VESTIGE - Initialize algorithm_name for custom models ###
+                            # Original pattern: algorithm_name = algorithm.split('_')[0]
+                            # For custom models, use full name as algorithm_name
+                            algorithm_name = algorithm  # Use full model name
+                            ### END REPRODUCTION VESTIGE ###
+                            
+                            try:
+                                load_model_path = f'./saved_models/{algorithm}/'
+                                if os.path.exists(f'{load_model_path}kwargs.yaml'):
+                                    print(f"[INFO] Loading custom model from {load_model_path}")
+                                    kwargs = safe_load_yaml_with_device(f'{load_model_path}kwargs.yaml', device)
+                                    # Assume PI_TD3 architecture for custom models (since we trained with pi_td3)
+                                    model = PI_TD3(**kwargs)
+                                    model.load(filename=f'{load_model_path}model.best', map_location=device)
+                                    print(f"[SUCCESS] Loaded PI_TD3 model: {algorithm}")
+                                    
+                                    actor_model = model.actor
+                                    model_parameters = filter(lambda p: p.requires_grad, actor_model.parameters())
+                                    params = sum([np.prod(p.size()) for p in model_parameters])
+                                    print(f'Actor model has {params} trainable parameters')
+                                else:
+                                    print(f"[ERROR] kwargs.yaml not found in {load_model_path}")
+                                    model = None
+                            except Exception as e:
+                                print(f"[ERROR] Failed to load custom model {algorithm}: {e}")
+                                model = None
+                    ### END REPRODUCTION VESTIGE ###
 
                     if type(algorithm) == str:
                         if "GNN" in algorithm:
@@ -371,7 +443,7 @@ def evaluator():
                             env = model.get_env()
                             state = env.reset()
 
-                        elif "pi_sac" in algorithm and k == 0:
+                        elif "pi_sac" in algorithm and test_cycle == 0:
 
                             algorithm_path = algorithm
                             load_model_path = f'./eval_models/{algorithm_path}/'
@@ -392,7 +464,7 @@ def evaluator():
                                     evaluate=True,
                                     map_location=device)
 
-                            if k == 0:
+                            if test_cycle == 0:
                                 actor_model = model.policy
                                 model_parameters = filter(
                                     lambda p: p.requires_grad, actor_model.parameters())
@@ -401,7 +473,7 @@ def evaluator():
                                 print(
                                     f'Actor model has {params} trainable parameters')
 
-                        elif "sac" in algorithm and k == 0:
+                        elif "sac" in algorithm and test_cycle == 0:
                             algorithm_path = algorithm
                             load_model_path = f'./eval_models/{algorithm_path}/'
                             # print(f'Loading SAC model from {load_model_path}')
@@ -422,7 +494,7 @@ def evaluator():
                                     evaluate=True,
                                     map_location=device)
 
-                            if k == 0:
+                            if test_cycle == 0:
                                 actor_model = model.policy
                                 model_parameters = filter(
                                     lambda p: p.requires_grad, actor_model.parameters())
@@ -431,7 +503,7 @@ def evaluator():
                                 print(
                                     f'Actor model has {params} trainable parameters')
 
-                        elif "pi_td3" in algorithm and k == 0:
+                        elif "pi_td3" in algorithm and test_cycle == 0:
                             algorithm_path = algorithm
                             load_model_path = f'./eval_models/{algorithm_path}/'
                             kwargs = safe_load_yaml_with_device(f'{load_model_path}kwargs.yaml', device)
@@ -447,7 +519,7 @@ def evaluator():
                                 filename=f'{load_model_path}model.best',
                                 map_location=device)
 
-                            if k == 0:
+                            if test_cycle == 0:
                                 actor_model = model.actor
                                 model_parameters = filter(
                                     lambda p: p.requires_grad, actor_model.parameters())
@@ -456,7 +528,7 @@ def evaluator():
                                 print(
                                     f'Actor model has {params} trainable parameters')
 
-                        elif "td3" in algorithm and k == 0:
+                        elif "td3" in algorithm and test_cycle == 0:
                             algorithm_path = algorithm
                             load_model_path = f'./eval_models/{algorithm_path}/'
                             kwargs = safe_load_yaml_with_device(f'{load_model_path}kwargs.yaml', device)
@@ -471,7 +543,7 @@ def evaluator():
                                 filename=f'{load_model_path}model.best',
                                 map_location=device)
 
-                            if k == 0:
+                            if test_cycle == 0:
                                 actor_model = model.actor
                                 model_parameters = filter(
                                     lambda p: p.requires_grad, actor_model.parameters())
@@ -480,7 +552,7 @@ def evaluator():
                                 print(
                                     f'Actor model has {params} trainable parameters')
 
-                        elif "shac" in algorithm and k == 0:
+                        elif "shac" in algorithm and test_cycle == 0:
                             algorithm_path = algorithm
                             load_model_path = f'./eval_models/{algorithm_path}/'
                             kwargs = safe_load_yaml_with_device(f'{load_model_path}kwargs.yaml', device)
@@ -539,10 +611,12 @@ def evaluator():
                         rewards.append(reward)
 
                     if done:
+                        timer = time.time() - timer
 
-                        results_i = pd.DataFrame({'run': k,
+                        # Create dataframe with results                        
+                        results_i = pd.DataFrame({'run': test_cycle,
                                                 'Algorithm': algorithm_name,
-                                                'algorithm_version': algorithm,
+                                                'algorithm_version': str(algorithm),
                                                 'control_horizon': h,
                                                 'discharge_price_factor': config['discharge_price_factor'],
                                                 'total_ev_served': stats['total_ev_served'],
@@ -592,13 +666,14 @@ def evaluator():
                             if "ppo" in algorithm:
                                 env = saved_env
 
-                        if k == 0:
+                        if test_cycle == 0:
                             # Store the original unwrapped environment for plotting
                             plot_results_dict[str(algorithm)] = deepcopy(original_env)
                             
-                except Exception as e:
-                    print(f"Error during evaluation of {algorithm} on cycle {k}: {e}")
-                    continue
+            except Exception as e:
+                cycle_info = f"cycle {test_cycle}" if 'test_cycle' in locals() else "initialization"
+                print(f"[ERROR] Evaluation of {algorithm} failed during {cycle_info}: {e}")
+                continue
 
         # save the replay buffers to a pickle file
         if SAVE_REPLAY_BUFFER:
@@ -616,22 +691,30 @@ def evaluator():
 
         # print unique algorithm versions
 
-        results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
-            "<class 'ev2gym.baselines.heuristics.ChargeAsFastAsPossible'>", 'ChargeAsFastAsPossible')
-        results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
-            "<class 'ev2gym.baselines.heuristics.RoundRobin_GF_off_allowed'>", 'RoundRobin_GF_off_allowed')
-        results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
-            "<class 'ev2gym.baselines.heuristics.RoundRobin_GF'>", 'RoundRobin_GF')
-        results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
-            "<class 'ev2gym.baselines.heuristics.RoundRobin'>", 'RoundRobin')
-        results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
-            "<class 'ev2gym.baselines.heuristics.DoNothing'>", 'DoNothing')
-        results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
-            "<class 'ev2gym.baselines.heuristics.RandomAgent'>", 'RandomAgent')
-        results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
-            "<class 'ev2gym.baselines.gurobi_models.tracking_error.PowerTrackingErrorrMin'>",
-            'Oracle'
-        )
+        ### DEFENSIVE CODING - Check results before modifying ###
+        # Original code (commented to preserve):
+        # results['algorithm_version'] = results['algorithm_version'].astype(str).replace(...)
+        
+        if not results.empty and 'algorithm_version' in results.columns:
+            results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
+                "<class 'ev2gym.baselines.heuristics.ChargeAsFastAsPossible'>", 'ChargeAsFastAsPossible')
+            results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
+                "<class 'ev2gym.baselines.heuristics.RoundRobin_GF_off_allowed'>", 'RoundRobin_GF_off_allowed')
+            results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
+                "<class 'ev2gym.baselines.heuristics.RoundRobin_GF'>", 'RoundRobin_GF')
+            results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
+                "<class 'ev2gym.baselines.heuristics.RoundRobin'>", 'RoundRobin')
+            results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
+                "<class 'ev2gym.baselines.heuristics.DoNothing'>", 'DoNothing')
+            results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
+                "<class 'ev2gym.baselines.heuristics.RandomAgent'>", 'RandomAgent')
+            results['algorithm_version'] = results['algorithm_version'].astype(str).replace(
+                "<class 'ev2gym.baselines.gurobi_models.tracking_error.PowerTrackingErrorrMin'>",
+                'Oracle'
+            )
+        else:
+            print("[WARNING] Results dataframe is empty or missing 'algorithm_version' column")
+        ### END DEFENSIVE CODING ###
 
         if SAVE_VOLTAGE_MINIMUM:
             # print the sizes
@@ -649,15 +732,40 @@ def evaluator():
             exit()
 
         # Print unique algorithm versions without truncation
-        unique_algorithms = results['algorithm_version'].unique()
-        print("Unique algorithm versions:")
-        for i, algo in enumerate(unique_algorithms):
-            print(f"  {i+1}: {algo}")
-        print(f"Total: {len(unique_algorithms)} unique algorithm versions\n")
+        pd.set_option('display.max_colwidth', None)
+        
+        ### DEFENSIVE CODING - Check before accessing results ###
+        if not results.empty and 'algorithm_version' in results.columns:
+            unique_algorithms = results['algorithm_version'].unique()
+            print(f"Unique algorithms evaluated: {unique_algorithms}")
+        ### REPRODUCTION VESTIGE - Safe results handling ###
+        # Original code (preserved):
+        # print("Unique algorithm versions:")
+        # for i, algo in enumerate(unique_algorithms):
+        #     print(f"  {i+1}: {algo}")
+        # ...
+        # results.to_csv(save_path + 'data.csv')
+        
+        if not results.empty and 'algorithm_version' in results.columns:
+            print("Unique algorithm versions:")
+            for i, algo in enumerate(unique_algorithms):
+                print(f"  {i+1}: {algo}")
+            print(f"Total: {len(unique_algorithms)} unique algorithm versions\n")
 
-        # save the results to a csv file
-        results.to_csv(save_path + 'data.csv')
-
+            # save the results to a csv file
+            results.to_csv(save_path + 'data.csv')
+            print(f'Results saved to {save_path}data.csv')
+            
+            # save the plot_results_dict to a pickle file if we have data
+            if plot_results_dict:
+                with gzip.open(save_path + 'env_for_plotting.pkl.gz', 'wb') as f:
+                    pickle.dump(plot_results_dict, f)
+                print(f'Plot results saved to {save_path}env_for_plotting.pkl.gz')
+        else:
+            print("[WARNING] No evaluation results collected. Skipping CSV/plot generation.")
+            print("[INFO] This usually means all algorithms failed to evaluate.")
+            print("[INFO] Check error messages above for details.")
+        ### END REPRODUCTION VESTIGE ###
         drop_columns = ['algorithm_version']
         # drop_columns = ['Algorithm']
 

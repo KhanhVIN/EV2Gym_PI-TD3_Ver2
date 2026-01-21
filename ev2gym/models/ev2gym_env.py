@@ -100,6 +100,15 @@ class EV2Gym(gym.Env):
         self.tr_rng = np.random.default_rng(seed=self.tr_seed)
 
         if load_from_replay_path is not None:
+            # Check if file exists before attempting to load
+            if not os.path.exists(load_from_replay_path):
+                abs_path = os.path.abspath(load_from_replay_path)
+                raise FileNotFoundError(
+                    f"Replay file not found: {load_from_replay_path}\n"
+                    f"Absolute path attempted: {abs_path}\n"
+                    f"Please verify the path is correct and the file exists."
+                )
+            
             with open(load_from_replay_path, 'rb') as file:
                 self.replay = pickle.load(file)
 

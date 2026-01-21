@@ -10,8 +10,19 @@ from agent.reward import Grid_V2G_profitmaxV2, V2G_grid_simple_reward, V2G_profi
 from agent.transition_fn import VoltageViolationLoss, V2G_Grid_StateTransition
 from agent.loss_fn import V2GridLoss
 
-from ev2gym.baselines.gurobi_models.v2g_grid_old import V2GProfitMax_Grid_OracleGB
-from ev2gym.baselines.gurobi_models.profit_max import V2GProfitMaxOracleGB
+### TEMP DISABLE GUROBI - START ###
+# Original imports (re-enable when you have Gurobi license):
+# from ev2gym.baselines.gurobi_models.v2g_grid_old import V2GProfitMax_Grid_OracleGB
+# from ev2gym.baselines.gurobi_models.profit_max import V2GProfitMaxOracleGB
+
+try:
+    from ev2gym.baselines.gurobi_models.v2g_grid_old import V2GProfitMax_Grid_OracleGB
+    from ev2gym.baselines.gurobi_models.profit_max import V2GProfitMaxOracleGB
+    GUROBI_AVAILABLE = True
+except ImportError:
+    GUROBI_AVAILABLE = False
+    print("[INFO] Gurobi not available. Skipping Gurobi-based baselines.")
+### TEMP DISABLE GUROBI - END ###
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -280,5 +291,14 @@ if __name__ == "__main__":
     # exit()
 
     # new_replay_path = 'replay/v2g_grid_50_1evals/replay_sim_2025_03_04_313926.pkl'
-    new_replay_path = './replay/replay_sim_2025_07_13_216595.pkl'
-    evaluate_optimal(new_replay_path)
+    # new_replay_path = './replay/replay_sim_2025_07_13_216595.pkl'
+    # evaluate_optimal(new_replay_path)
+
+    new_replay_path = eval()
+    
+    ### TEMP DISABLE GUROBI - START ###
+    # Gurobi baseline evaluation requires license - uncomment when you have it:
+    # evaluate_optimal(new_replay_path)
+    print("[INFO] Skipping evaluate_optimal() - requires Gurobi license")
+    print(f"[INFO] Replay saved to: {new_replay_path}")
+    ### TEMP DISABLE GUROBI - END ###
