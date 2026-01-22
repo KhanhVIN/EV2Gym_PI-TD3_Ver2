@@ -1,0 +1,284 @@
+"""
+This script is used to evaluate the performance of the ev2gym environment.
+"""
+from ev2gym.models.ev2gym_env import EV2Gym
+
+from ev2gym.baselines.heuristics import RoundRobin, RandomAgent, ChargeAsFastAsPossible
+
+from agent.state import V2G_grid_state_ModelBasedRL
+from agent.reward import Grid_V2G_profitmaxV2, V2G_grid_simple_reward, V2G_profitmax, V2G_profitmaxV2, pst_V2G_profitmaxV2
+from agent.transition_fn import VoltageViolationLoss, V2G_Grid_StateTransition
+from agent.loss_fn import V2GridLoss
+
+from ev2gym.baselines.gurobi_models.v2g_grid_old import V2GProfitMax_Grid_OracleGB
+from ev2gym.baselines.gurobi_models.profit_max import V2GProfitMaxOracleGB
+
+import numpy as np
+import matplotlib.pyplot as plt
+import gymnasium as gym
+import pandas as pd
+import torch
+import time
+
+
+def eval():
+    """
+    Runs an evaluation of the ev2gym environment.
+    """
+
+    # replay_path = "./replay/replay_sim_2025_02_24_434484.pkl"
+
+    replay_path = None
+
+    # config_file = "./config_files/v2g_grid_50.yaml"
+    # config_file = "./config_files/PST_V2G_ProfixMax_150.yaml"
+    # config_file = "./config_files/v2g_grid_150.yaml"
+    # config_file = "./config_files/v2g_grid_150_bus_123.yaml"
+    config_file = "./config_files/v2g_grid_35.yaml"
+
+    # config_file = "./config_files/v2g_grid_50.yaml"
+
+    seed = 0
+
+    if "v2g_grid" in config_file:
+        state_function = V2G_grid_state_ModelBasedRL
+        reward_function = Grid_V2G_profitmaxV2
+
+    elif "PST_V2G" in config_file:
+        state_function = V2G_grid_state_ModelBasedRL
+        reward_function = pst_V2G_profitmaxV2
+    else:
+        raise ValueError(
+            f"Unknown config file: {config_file}. Please use a valid config file.")
+
+    env = EV2Gym(config_file=config_file,
+                 load_from_replay_path=replay_path,
+                 verbose=False,
+                 save_replay=True,
+                 save_plots=True,
+                 state_function=state_function,
+                 reward_function=reward_function,
+                 )
+
+    print(env.action_space)
+    print(env.observation_space)
+    new_replay_path = f"replay/replay_{env.sim_name}.pkl"
+
+    agent = ChargeAsFastAsPossible()
+    # agent = RandomAgent()
+    # agent = ChargeAsFastAsPossibleToDesiredCapacity()
+
+    max_cs_power = env.charging_stations[0].get_max_power()
+    min_cs_power = env.charging_stations[0].get_min_power()
+
+    ev_battery_capacity = env.EVs_profiles[0].battery_capacity
+    ev_min_battery_capacity = env.EVs_profiles[0].min_battery_capacity
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    if "grid" in config_file:
+        print(f'number of buses: {env.grid.net.nb}')
+        print(f'number of charging stations: {len(env.charging_stations)}')
+
+        loss_fn = V2GridLoss(K=env.grid.net._K_,
+                             L=env.grid.net._L_,
+                             s_base=env.grid.net.s_base,
+                             num_buses=env.grid.net.nb,
+                             max_cs_power=max_cs_power,
+                             min_cs_power=min_cs_power,
+                             ev_battery_capacity=ev_battery_capacity,
+                             ev_min_battery_capacity=ev_min_battery_capacity,
+                             device=device,
+                             verbose=False,
+                             )
+
+        state_transition = V2G_Grid_StateTransition(verbose=False,
+                                                    device=device,
+                                                    num_buses=env.grid.net.nb
+                                                    )
+        loss_fn = loss_fn.grid_profit_maxV2
+
+    else:
+        loss_fn = V2GridLoss(K=np.zeros(1),
+                             L=np.zeros(1),
+                             s_base=-1,
+                             num_buses=34,
+                             max_cs_power=max_cs_power,
+                             min_cs_power=min_cs_power,
+                             ev_battery_capacity=ev_battery_capacity,
+                             ev_min_battery_capacity=ev_min_battery_capacity,
+                             device=device,
+                             verbose=False,
+                             )
+        state_transition = V2G_Grid_StateTransition(verbose=False,
+                                                    device=device,
+                                                    num_buses=34
+                                                    )
+
+        loss_fn = loss_fn.pst_V2G_profit_maxV2
+
+    succesful_runs = 0
+    failed_runs = 0
+
+    results_df = None
+    total_timer = 0
+
+    for i in range(1):
+        state, _ = env.reset()
+        for t in range(env.simulation_length):
+            actions = agent.get_action(env)
+
+            new_state, reward, done, truncated, stats = env.step(
+                actions,
+                visualize=False,
+            )
+            # input('press enter to continue')
+            # print(
+            #     "============================================================================")
+            predicted_state = state_transition(state=torch.tensor(state, device=device).reshape(1, -1),
+                                               new_state=torch.tensor(
+                                                   new_state, device=device).reshape(1, -1),
+                                               action=torch.tensor(
+                                                   actions, device=device).reshape(1, -1),
+                                               )
+
+            predicted_state = predicted_state.cpu().detach().numpy().reshape(-1)
+            # print(f'Prev State: {state}')
+            # print(f'Predicted State: {predicted_state}')
+            # print(f'New State: {new_state}')
+            # print(f'diff: {np.abs(predicted_state - new_state).mean()}')
+            if np.abs(predicted_state - new_state).mean() > 0.001:
+                # make noise beep
+                print(f'diff: {np.abs(predicted_state - new_state).mean()}')
+
+                step_size = 3
+                ev_state_start = 4 + 2*(env.grid.net.nb-1)
+                number_of_cs = len(actions)
+                current_capacity = new_state[ev_state_start:(
+                    ev_state_start + step_size*number_of_cs):step_size]
+                print(f'actual: {current_capacity}')
+                print("="*50)
+                print(f'predicted: {predicted_state}')
+                print(f'actual: {new_state}')
+                input('Error in state transition')
+
+            # print("============================================================================")
+            timer = time.time()
+
+            loss = loss_fn(action=torch.tensor(actions, device=device).reshape(1, -1),
+                           state=torch.tensor(state, device=device).reshape(1, -1))
+            total_timer += time.time() - timer
+
+            # v = loss_fn.voltage_real_operations(state=torch.tensor(state, device=device).reshape(1, -1),
+            #                                     action=torch.tensor(
+            #     actions, device=device).reshape(1, -1),
+            # )
+            # v_m = env.node_voltage[1:, t]
+
+            # v = v.cpu().detach().numpy().reshape(-1)
+            # # print(f'\n \n')
+            # print(f'V real: {v_m}')
+            # print(f'V pred: {v}')
+            # print(f'v_loss {np.abs(v - v_m).mean()}')
+            # if np.abs(v - v_m).mean() > 0.001:
+            #     input(f'Error in voltage calculation')
+
+            # loss_v = np.minimum(np.zeros_like(v_m), 0.05 - np.abs(1-v_m))
+
+            # print(f'Loss V: {loss_v}')
+
+            reward_loss = np.abs(reward - loss.cpu().detach().numpy())
+
+            if reward_loss > 1:  # 0.01:
+                print(
+                    f'Reward Loss: {reward_loss} | Reward: {reward} | Loss: {loss}')
+                input(f'Error in reward calculation')
+
+            # input(f'Reward Loss: {reward_loss} | Reward: {reward} | Loss: {loss}')
+            state = new_state
+
+            if done and truncated:
+                failed_runs += 1
+                break
+
+            if done:
+                keys_to_print = ['total_ev_served',
+                                 'total_energy_charged',
+                                 'total_profits',
+                                 'average_user_satisfaction',
+                                 #  'saved_grid_energy',
+                                 'voltage_violation',
+                                 'total_reward'
+                                 ]
+                print({key: stats[key] for key in keys_to_print})
+
+                new_stats = {key: stats[key] for key in keys_to_print}
+
+                if i == 0:
+                    results_df = pd.DataFrame(new_stats, index=[0])
+                else:
+                    results_df = pd.concat([results_df,
+                                            pd.DataFrame(new_stats, index=[0])])
+
+                succesful_runs += 1
+                break
+
+        if i % 100 == 0:
+            print(
+                f' Succesful runs: {succesful_runs} Failed runs: {failed_runs}')
+
+    print(results_df.describe())
+
+    new_replay_path = f"replay/replay_{env.sim_name}.pkl"
+    return new_replay_path
+
+
+def evaluate_optimal(new_replay_path):
+
+    agent = V2GProfitMax_Grid_OracleGB(replay_path=new_replay_path)
+
+    # # Profit maximization optimizer
+    # agent = V2GProfitMaxOracleGB(replay_path=new_replay_path)
+    # agent = ChargeAsFastAsPossible()
+    # # Simulate in the gym environment and get the rewards
+    config_file = "./config_files/v2g_grid_35.yaml"
+    # config_file = "./config_files/v2g_grid_50.yaml"
+
+    env = EV2Gym(config_file=config_file,
+                 load_from_replay_path=new_replay_path,
+                 verbose=False,
+                 save_plots=True,
+                 state_function=V2G_grid_state_ModelBasedRL,
+                 reward_function=V2G_profitmaxV2,
+                 )
+    
+    new_state, _ = env.reset()
+    rewards_opt = []
+
+    for t in range(env.simulation_length):
+        actions = agent.get_action(env)
+        # if verbose:
+        #     print(f' OptimalActions: {actions}')
+
+        # print(f'state {t}: {new_state}')
+        # input('Press Enter to continue')
+
+        new_state, reward, done, truncated, stats = env.step(
+            actions, visualize=False)  # takes action
+        rewards_opt.append(reward)
+
+        # if verbose:
+        #     print(f'Reward: {reward} \t Done: {done}')
+
+        if done:
+            print(stats)
+            break
+
+
+if __name__ == "__main__":
+    # while True:
+    new_replay_path = eval()
+    # exit()
+
+    # new_replay_path = 'replay/v2g_grid_50_1evals/replay_sim_2025_03_04_313926.pkl'
+    # new_replay_path = './replay/replay_sim_2025_07_13_216595.pkl'
+    evaluate_optimal(new_replay_path)

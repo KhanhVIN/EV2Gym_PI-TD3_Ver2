@@ -1,0 +1,18 @@
+pandas>=2.0.0,<3.0.0
+numpy>=1.24.0,<2.0.0
+numba>=0.58.0          # Downgraded for Python 3.8 compatibility
+networkx>=3.0
+gymnasium==1.0.0
+matplotlib
+gurobipy
+pyyaml
+multicopula
+pandapower              # Required for grid power flow simulation
+
+# Essential for current codebase
+wandb
+tqdm
+seaborn
+stable-baselines3
+sb3-contrib
+torch-geometric         # Required for GNN-based agent utilities
