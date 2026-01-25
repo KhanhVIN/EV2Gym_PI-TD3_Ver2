@@ -178,4 +178,4 @@ checkpoints/
 .lprof/
 results_analysis/old_data/
 results_analysis/figs/
-results_analysis/pes/
+results_analysis/pes/gurobi.lic
