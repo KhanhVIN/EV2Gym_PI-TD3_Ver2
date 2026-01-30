@@ -76,4 +76,4 @@ def visualize_log(log_file='output.log'):
     plt.show()
 
 if __name__ == "__main__":
-    visualize_log()
+    visualize_log('outputLogs/log_pst500cs_123bus_pi_td3_200k.log')

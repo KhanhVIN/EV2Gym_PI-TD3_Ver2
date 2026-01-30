@@ -45,15 +45,15 @@ inflexible_loads:
 minute: 0
 month: 1
 network_info:
-  branch_info_file: ./ev2gym/data/network_data/node_34/Lines_34.csv
-  bus_info_file: ./ev2gym/data/network_data/node_34/Nodes_34.csv
-  load_multiplier: 1
+  branch_info_file: ./ev2gym/data/network_data/node_123/Lines_123.csv
+  bus_info_file: ./ev2gym/data/network_data/node_123/Nodes_123.csv
+  load_multiplier: 3
   pv_scale: 80
   s_base: 1000
   vm_pu: 1.0
-number_of_charging_stations: 35
+number_of_charging_stations: 500
 number_of_ports_per_cs: 1
-number_of_transformers: 1
+number_of_transformers: -1
 pf_solver: Laurent
 power_setpoint_enabled: true
 power_setpoint_flexiblity: 80
@@ -62,7 +62,7 @@ random_hour: false
 scenario: public
 simulate_grid: true
 simulation_days: weekdays
-simulation_length: 96
+simulation_length: 300
 solar_power:
   forecast_mean: 20
   forecast_std: 5

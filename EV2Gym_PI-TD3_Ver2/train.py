@@ -406,10 +406,12 @@ if __name__ == "__main__":
 
     group_name = f'{args.group_name}_{args.scenario}_{number_of_charging_stations}cs_{n_transformers}tr'
 
-    if args.load_model == "":
-        exp_prefix = f'{args.name}-{random.randint(int(1e5), int(1e6) - 1)}'
-    else:
+    if args.exp_prefix != "":
+        exp_prefix = args.exp_prefix
+    elif args.load_model != "":
         exp_prefix = args.load_model
+    else:
+        exp_prefix = f'{args.name}-{random.randint(int(1e5), int(1e6) - 1)}'
     # print(f'group_name: {group_name}, exp_prefix: {exp_prefix}')
 
     save_path = f'./saved_models/{exp_prefix}/'

@@ -155,8 +155,8 @@ class EV_Charger:
         for i, action in enumerate(normalized_actions):
             actual_energy = 0
             action = round(action, 5)
-            assert (action >= -1 and action <= 1,
-                    f'Action {action} is not in range [-1,1]')
+            assert action >= -1 and action <= 1, \
+                f'Action {action} is not in range [-1,1]'
 
             amps = 0
             if action == 0 and self.evs_connected[i] is not None:
